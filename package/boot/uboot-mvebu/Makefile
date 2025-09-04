@@ -8,10 +8,10 @@
 include $(TOPDIR)/rules.mk
 include $(INCLUDE_DIR)/kernel.mk
 
-PKG_VERSION:=2024.04
+PKG_VERSION:=2025.07
 PKG_RELEASE:=1
 
-PKG_HASH:=18a853fe39fad7ad03a90cc2d4275aeaed6da69735defac3492b80508843dd4a
+PKG_HASH:=0f933f6c5a426895bf306e93e6ac53c60870e4b54cda56d95211bec99e63bec7
 
 include $(INCLUDE_DIR)/u-boot.mk
 include $(INCLUDE_DIR)/package.mk
@@ -60,13 +60,25 @@ define U-Boot/eDPU
   BUILD_SUBTARGET:=cortexa53
 endef
 
+define U-Boot/rb5009
+  NAME:=MikroTik RB5009
+  BUILD_SUBTARGET:=cortexa72
+  BUILD_DEVICES:=mikrotik_rb5009
+  UBOOT_CONFIG:=mvebu_rb5009
+  UBOOT_IMAGE:=u-boot.elf
+endef
+
 UBOOT_TARGETS:= \
 	clearfog \
 	helios4 \
 	omnia \
 	espressobin \
 	uDPU \
-	eDPU
+	eDPU \
+	rb5009
+
+UBOOT_CUSTOMIZE_CONFIG := \
+	--disable TOOLS_MKEFICAPSULE
 
 define Package/u-boot/install
 	$(if $(findstring cortexa53,$(BUILD_SUBTARGET)),,$(Package/u-boot/install/default))

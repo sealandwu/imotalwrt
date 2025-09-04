@@ -8,13 +8,13 @@
 include $(TOPDIR)/rules.mk
 
 PKG_NAME:=fman-ucode
-PKG_VERSION:=lf-6.1.1-1.0.0
+PKG_VERSION:=6.12.20.2.0.0
 PKG_RELEASE:=1
 
 PKG_SOURCE_PROTO:=git
 PKG_SOURCE_URL:=https://github.com/nxp-qoriq/qoriq-fm-ucode
-PKG_SOURCE_VERSION:=lf-6.1.1-1.0.0
-PKG_MIRROR_HASH:=d69792e0b03f2fd00cb9d69325d9817b43fb14dd1b27e41018b3ea69b25c55a5
+PKG_SOURCE_VERSION:=lf-6.12.20-2.0.0
+PKG_MIRROR_HASH:=15b5df228b23b4cbdd1af484c98069b558d32ece15a80f0dabe22af6e5ee1ba1
 
 PKG_FLAGS:=nonshared
 
@@ -25,6 +25,8 @@ define Package/layerscape-fman
   CATEGORY:=Firmware
   TITLE:=NXP FMan ucode
   DEPENDS:=@TARGET_layerscape
+  DEFAULT:=y if TARGET_layerscape_armv8_64b
+  HIDDEN:=1
 endef
 
 define Build/Compile
