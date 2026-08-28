@@ -1,6 +1,9 @@
 'use strict';
 
-import { append, append_raw, append_vars, dump_config, flush_config, set_default } from 'wifi.common';
+import {
+	append, append_raw, append_vars, dump_config, flush_config, set_default,
+	wiphy_info, wiphy_band
+} from 'wifi.common';
 import { validate } from 'wifi.validate';
 import * as netifd from 'wifi.netifd';
 import * as iface from 'wifi.iface';
@@ -11,7 +14,8 @@ import * as fs from 'fs';
 const NL80211_EXT_FEATURE_ENABLE_FTM_RESPONDER = 33;
 const NL80211_EXT_FEATURE_RADAR_BACKGROUND = 61;
 
-const nl80211_bands = [ '2g', '5g', '60g', '6g' ];
+const WLAN_CIPHER_SUITE_GCMP_256 = 0x000fac09;
+
 let phy_features = {};
 let phy_capabilities = {};
 
@@ -28,8 +32,10 @@ function set_device_defaults(config) {
 	/* validate band */
 	if (config.band == '2g')
 		config.hw_mode = 'g';
-	else if (config.band in [ '5g', '6g', '60g' ])
+	else if (config.band in [ '5g', '6g' ])
 		config.hw_mode = 'a';
+	else if (config.band == '60g')
+		config.hw_mode = 'ad';
 	else
 		switch (config.hw_mode) {
 		case 'a':
@@ -135,21 +141,16 @@ function device_cell_density_append(config) {
 	}
 }
 
-function device_rates(config) {
-	for (let key in [ 'supported_rates', 'basic_rates' ])
-		config[key] = map(config[key], x => x / 100);
-
-	append_vars(config, [ 'beacon_rate', 'supported_rates', 'basic_rates' ]);
-}
-
 function device_htmode_append(config) {
 	config.channel_offset = config.band == '6g' ? 1 : 0;
 
 	/* 802.11n */
 	config.ieee80211n = 0;
 	if (config.band != '6g') {
-		if (config.htmode in [ 'VHT20', 'HT20', 'HE20', 'EHT20' ])
+		if (config.htmode in [ 'VHT20', 'HT20', 'HE20', 'EHT20' ]) {
 			config.ieee80211n = 1;
+			config.ht_capab = '';
+		}
 		if (config.htmode in [ 'HT40', 'HT40+', 'HT40-', 'VHT40', 'VHT80', 'VHT160', 'HE40', 'HE80', 'HE160', 'EHT40', 'EHT80', 'EHT160' ]) {
 			config.ieee80211n = 1;
 			if (!config.channel)
@@ -279,6 +280,17 @@ function device_htmode_append(config) {
 				}
 			config.op_class = 137;
 			config.eht_oper_chwidth = 7;
+
+			/*
+			 * Set HE operation values for 160MHz backward compatibility
+			 * with WiFi 6E clients. Pick the 160MHz half that contains
+			 * the primary channel.
+			 */
+			config.he_oper_chwidth = 3;
+			if (config.channel < config.eht_oper_centr_freq_seg0_idx)
+				config.he_oper_centr_freq_seg0_idx = config.eht_oper_centr_freq_seg0_idx - 16;
+			else
+				config.he_oper_centr_freq_seg0_idx = config.eht_oper_centr_freq_seg0_idx + 16;
 			break;
 
 		case 'HE40':
@@ -301,10 +313,10 @@ function device_htmode_append(config) {
 			config.short_gi_160 = 0;
 		}
 
-		config.tx_queue_data2_burst = '2.0';
+		set_default(config, 'tx_queue_data2_burst', '2.0');
 
 		let vht_capab = phy_capabilities.vht_capa;
-		
+
 		config.vht_capab = '';
 		if (vht_capab & 0x10 && config.rxldpc)
 			config.vht_capab += '[RXLDPC]';
@@ -336,12 +348,12 @@ function device_htmode_append(config) {
 		if (vht_capab & 0x800 && config.su_beamformer)
 			config.vht_capab += '[SOUNDING-DIMENSION-' + min(((vht_capab >> 16) & 3) + 1, config.beamformer_antennas) + ']';
 		if (vht_capab & 0x1000 && config.su_beamformee)
-			config.vht_capab += '[BF-ANTENNA-' + min(((vht_capab >> 13) & 3) + 1, config.beamformer_antennas) + ']';
+			config.vht_capab += '[BF-ANTENNA-' + min(((vht_capab >> 13) & 3) + 1, config.beamformee_antennas) + ']';
 
 		/* supported Channel widths */
-		if ((vht_capab & 0xc) == 8 && config.vht160 <= 2)
+		if ((vht_capab & 0xc) == 8 && config.vht160 >= 2)
 			config.vht_capab += '[VHT160-80PLUS80]';
-		else if ((vht_capab & 0xc) == 4 && config.vht160 <= 2)
+		else if (((vht_capab & 0xc) == 4 || (vht_capab & 0xc) == 8) && config.vht160 >= 1)
 			config.vht_capab += '[VHT160]';
 
 		/* maximum MPDU length */
@@ -379,8 +391,20 @@ function device_htmode_append(config) {
 		config.ieee80211ax = true;
 
 		if (config.hw_mode == 'a') {
-			config.he_oper_chwidth = config.vht_oper_chwidth;
-			config.he_oper_centr_freq_seg0_idx = config.vht_oper_centr_freq_seg0_idx;
+			/*
+			 * Only set HE values from VHT if not already set.
+			 * For 6GHz 320MHz, these are pre-set for 160MHz backward
+			 * compatibility with WiFi 6E clients.
+			 */
+			if (!config.he_oper_chwidth)
+				config.he_oper_chwidth = config.vht_oper_chwidth;
+			if (!config.he_oper_centr_freq_seg0_idx)
+				config.he_oper_centr_freq_seg0_idx = config.vht_oper_centr_freq_seg0_idx;
+		}
+
+		if (config.band == "6g") {
+			config.stationary_ap = true;
+			append_vars(config, [ 'he_6ghz_reg_pwr_type', ]);
 		}
 
 		if (config.he_bss_color_enabled) {
@@ -399,12 +423,15 @@ function device_htmode_append(config) {
 			config.he_mu_beamformer = false;
 		if (!(he_phy_cap[7] & 0x1))
 			config.he_spr_psr_enabled = false;
-		if (!(he_mac_cap[0] & 0x1))
+		if (!(he_mac_cap[0] & 0x4))
+			config.he_twt_responder = false;
+		if (!config.he_twt_responder)
 			config.he_twt_required= false;
 
 		append_vars(config, [
 			'ieee80211ax', 'he_oper_chwidth', 'he_oper_centr_freq_seg0_idx',
-			'he_su_beamformer', 'he_su_beamformee', 'he_mu_beamformer', 'he_twt_required',
+			'he_su_beamformer', 'he_su_beamformee', 'he_mu_beamformer',
+			'he_twt_required', 'he_twt_responder',
 			'he_default_pe_duration', 'he_rts_threshold', 'he_mu_edca_qos_info_param_count',
 			'he_mu_edca_qos_info_q_ack', 'he_mu_edca_qos_info_queue_request', 'he_mu_edca_qos_info_txop_request',
 			'he_mu_edca_ac_be_aifsn', 'he_mu_edca_ac_be_aci', 'he_mu_edca_ac_be_ecwmin',
@@ -418,51 +445,55 @@ function device_htmode_append(config) {
 	}
 
 	if (wildcard(config.htmode, 'EHT*')) {
+		let eht_phy_cap = phy_capabilities.eht_phy_cap;
+
 		config.ieee80211be = true;
-		append_vars(config, [ 'ieee80211be' ]);
+
+		if (!(eht_phy_cap[0] & 0x20))
+			config.eht_su_beamformer = false;
+		if (!(eht_phy_cap[0] & 0x40))
+			config.eht_su_beamformee = false;
+		if (!(eht_phy_cap[7] & 0x70))
+			config.eht_mu_beamformer = false;
+
+		append_vars(config, [
+			'ieee80211be', 'eht_su_beamformer', 'eht_su_beamformee',
+			'eht_mu_beamformer',
+		]);
 
 		if (config.hw_mode == 'a')
 			append_vars(config, [ 'eht_oper_chwidth', 'eht_oper_centr_freq_seg0_idx' ]);
-
-		if (config.band == "6g") {
-			config.stationary_ap = true;
-			append_vars(config, [ 'he_6ghz_reg_pwr_type', ]);
-		}
 	}
 
 	append_vars(config, [ 'tx_queue_data2_burst', 'stationary_ap' ]);
 }
 
 function device_extended_features(data, flag) {
-	return !!(data[flag / 8] | (1 << (flag % 8)));
+	return !!(data[flag / 8] & (1 << (flag % 8)));
 }
 
 function device_capabilities(config) {
 	let phy = config.phy;
-	let idx = +fs.readfile(`/sys/class/ieee80211/${phy}/index`);
-	phy = nl80211.request(nl80211.const.NL80211_CMD_GET_WIPHY, nl80211.const.NLM_F_DUMP, { wiphy: idx, split_wiphy_dump: true });
-	if (!phy)
-		return;
 
-	let band_idx = index(nl80211_bands, config.band);
-	if (band_idx < 0)
-		return;
-
-	let band = phy.wiphy_bands[band_idx];
-	if (!band)
-		return;
+	phy = wiphy_info(phy);
+	let band = wiphy_band(phy, config.band);
 
 	phy_capabilities.ht_capa = band.ht_capa ?? 0;
 	phy_capabilities.vht_capa = band.vht_capa ?? 0;
+	phy_capabilities.he_mac_cap = [];
+	phy_capabilities.he_phy_cap = [];
+	phy_capabilities.eht_phy_cap = [];
 	for (let iftype in band.iftype_data) {
 		if (!iftype.iftypes.ap)
 			continue;
 		phy_capabilities.he_mac_cap = iftype.he_cap_mac;
 		phy_capabilities.he_phy_cap = iftype.he_cap_phy;
+		phy_capabilities.eht_phy_cap = iftype.eht_cap_phy;
 	}
 
 	phy_features.ftm_responder = device_extended_features(phy.extended_features, NL80211_EXT_FEATURE_ENABLE_FTM_RESPONDER);
 	phy_features.radar_background = device_extended_features(phy.extended_features, NL80211_EXT_FEATURE_RADAR_BACKGROUND);
+	phy_features.cipher_gcmp256 = WLAN_CIPHER_SUITE_GCMP_256 in (phy.cipher_suites ?? []);
 }
 
 function generate(config) {
@@ -481,8 +512,6 @@ function generate(config) {
 
 	device_cell_density_append(config);
 
-	device_rates(config);
-
 	/* beacon */
 	append_vars(config, [ 'beacon_int', 'beacon_rate', 'rnr_beacon' ]);
 
@@ -490,10 +519,11 @@ function generate(config) {
 	append_vars(config, [ 'noscan' ]);
 
 	/* airtime */
-	append_vars(config, [ 'airtime_mode' ]);
+	if (config.airtime_mode)
+		append_vars(config, [ 'airtime_mode' ]);
 
 	/* assoc/thresholds */
-	append_vars(config, [ 'rssi_reject_assoc_rssi', 'rssi_ignore_probe_request', 'iface_max_num_sta', 'no_probe_resp_if_max_sta' ]);
+	append_vars(config, [ 'rssi_reject_assoc_rssi', 'rssi_reject_assoc_timeout', 'rssi_ignore_probe_request', 'iface_max_num_sta' ]);
 
 	/* ACS / Radar*/
 	if (!phy_features.radar_background || config.band != '5g')
@@ -552,9 +582,14 @@ export function setup(data) {
 		append('\n#num_global_macaddr', data.config.num_global_macaddr);
 	if (data.config.macaddr_base)
 		append('\n#macaddr_base', data.config.macaddr_base);
+	if (data.config.frequency)
+		append('\n#frequency', data.config.frequency);
+	if (data.channel_follow)
+		append('\n#channel_follow', 1);
 
+	let has_ap;
 	for (let k, interface in data.interfaces) {
-		if (interface.config.mode != 'ap' && interface.config.mode != 'link')
+		if (interface.config.mode != 'ap')
 			continue;
 
 		interface.config.network_bridge = interface.bridge;
@@ -565,6 +600,7 @@ export function setup(data) {
 		setup_interface(k, data, interface.config, interface.vlans, interface.stas, phy_features, owe ? 'owe' : null );
 		if (owe)
 			setup_interface(k, data, interface.config, interface.vlans, interface.stas, phy_features, 'owe-transition');
+		has_ap = true;
 	}
 
 	let config = dump_config(file_name);
@@ -572,13 +608,15 @@ export function setup(data) {
 	let msg = {
 		phy: data.phy,
 		radio: data.config.radio,
-		config: file_name,
+		config: has_ap ? file_name : "",
 		prev_config: file_name + '.prev'
 	};
+	if (!global.ubus.list('hostapd'))
+		system('ubus wait_for hostapd');
 	let ret = global.ubus.call('hostapd', 'config_set', msg);
 
 	if (ret)
 		netifd.add_process('/usr/sbin/hostapd', ret.pid, true, true);
-	else if (fs.access('/usr/sbin/hostapd', 'x'))
+	else
 		netifd.setup_failed('HOSTAPD_START_FAILED');
 };

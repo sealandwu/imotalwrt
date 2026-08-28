@@ -5,9 +5,9 @@
 include $(TOPDIR)/rules.mk
 include $(INCLUDE_DIR)/kernel.mk
 
-PKG_VERSION:=2025.04
+PKG_VERSION:=2026.07
 PKG_RELEASE:=1
-PKG_HASH:=439d3bef296effd54130be6a731c5b118be7fddd7fcc663ccbc5fb18294d8718
+PKG_HASH:=78e8bfc382fe388f9b55aa1daf8c563522a037779b5d4c349d1415e381f1243e
 
 PKG_MAINTAINER:=Sarah Maedel <openwrt@tbspace.de>
 
@@ -36,7 +36,7 @@ endef
 
 define U-Boot/rock-pi-s-rk3308
   $(U-Boot/rk3308/Default)
-  DEPENDS:=+PACKAGE_u-boot-$(1):trusted-firmware-a-rk3308-rock-pi-s
+  DEPENDS:=+PACKAGE_u-boot-$(1):trusted-firmware-a-rk3308-tpl-rock-pi-s
   TPL:=$(RK3308_TPL_ROCK_PI_S)
   NAME:=ROCK Pi S
   BUILD_DEVICES:= \
@@ -73,6 +73,13 @@ define U-Boot/nanopi-r2s-rk3328
     friendlyarm_nanopi-r2s
 endef
 
+define U-Boot/nanopi-r2s-plus-rk3328
+  $(U-Boot/rk3328/Default)
+  NAME:=NanoPi R2S Plus
+  BUILD_DEVICES:= \
+    friendlyarm_nanopi-r2s-plus
+endef
+
 define U-Boot/orangepi-r1-plus-rk3328
   $(U-Boot/rk3328/Default)
   NAME:=Orange Pi R1 Plus
@@ -94,18 +101,18 @@ define U-Boot/roc-cc-rk3328
     firefly_roc-rk3328-cc
 endef
 
-define U-Boot/rock-pi-e-rk3328
-  $(U-Boot/rk3328/Default)
-  NAME:=ROCK Pi E
-  BUILD_DEVICES:= \
-    radxa_rock-pi-e
-endef
-
 define U-Boot/rock64-rk3328
   $(U-Boot/rk3328/Default)
   NAME:=Rock64
   BUILD_DEVICES:= \
     pine64_rock64
+endef
+
+define U-Boot/rock-pi-e-rk3328
+  $(U-Boot/rk3328/Default)
+  NAME:=ROCK Pi E
+  BUILD_DEVICES:= \
+    radxa_rock-pi-e
 endef
 
 
@@ -175,6 +182,45 @@ define U-Boot/rockpro64-rk3399
 endef
 
 
+# RK3528 boards
+
+define U-Boot/rk3528/Default
+  BUILD_SUBTARGET:=armv8
+  DEPENDS:=+PACKAGE_u-boot-$(1):trusted-firmware-a-rk3528
+  ATF:=$(RK3528_ATF)
+  TPL:=$(RK3528_TPL)
+endef
+
+define U-Boot/mangopi-m28c-rk3528
+  $(U-Boot/rk3528/Default)
+  NAME:=MangoPi M28C
+  BUILD_DEVICES:= \
+    widora_mangopi-m28c
+endef
+
+define U-Boot/mangopi-m28k-rk3528
+  $(U-Boot/rk3528/Default)
+  NAME:=MangoPi M28K
+  BUILD_DEVICES:= \
+    widora_mangopi-m28k
+endef
+
+define U-Boot/radxa-e20c-rk3528
+  $(U-Boot/rk3528/Default)
+  NAME:=E20C
+  BUILD_DEVICES:= \
+    radxa_e20c
+endef
+
+define U-Boot/rock-2-rk3528
+  $(U-Boot/rk3528/Default)
+  NAME:=ROCK 2A/2F
+  BUILD_DEVICES:= \
+    radxa_rock-2a \
+    radxa_rock-2f
+endef
+
+
 # RK3566 boards
 
 define U-Boot/rk3566/Default
@@ -222,11 +268,25 @@ define U-Boot/rk3568/Default
   TPL:=$(RK3568_TPL)
 endef
 
+define U-Boot/9tripod-x3568-v4-rk3568
+  $(U-Boot/rk3568/Default)
+  NAME:=9Tripod X3568 v4
+  BUILD_DEVICES:= \
+    9tripod_x3568-v4
+endef
+
 define U-Boot/bpi-r2-pro-rk3568
   $(U-Boot/rk3568/Default)
   NAME:=Bananapi-R2 Pro
   BUILD_DEVICES:= \
     sinovoip_bpi-r2-pro
+endef
+
+define U-Boot/easepi-r1-rk3568
+  $(U-Boot/rk3568/Default)
+  NAME:=LinkEase EasePi R1
+  BUILD_DEVICES:= \
+    linkease_easepi-r1
 endef
 
 define U-Boot/fastrhino-r66s-rk3568
@@ -287,7 +347,7 @@ endef
 
 define U-Boot/radxa-e25-rk3568
   $(U-Boot/rk3568/Default)
-  DEPENDS:=+PACKAGE_u-boot-$(1):trusted-firmware-a-rk3568-e25
+  DEPENDS:=+PACKAGE_u-boot-$(1):trusted-firmware-a-rk3568-tpl-e25
   TPL:=$(RK3568_TPL_E25)
   NAME:=E25
   BUILD_DEVICES:= \
@@ -322,10 +382,54 @@ define U-Boot/sige3-rk3568
     armsom_sige3
 endef
 
+define U-Boot/xiguapi-v3-rk3568
+  $(U-Boot/rk3568/Default)
+  NAME:=XiGuaPi V3
+  BUILD_DEVICES:= \
+    nlnet_xiguapi-v3
+endef
 
-# RK3588 boards
+# RK3576 boards
 
-define U-Boot/rk3588/Default
+define U-Boot/rk3576/Default
+  BUILD_SUBTARGET:=armv8
+  DEPENDS:=+PACKAGE_u-boot-$(1):trusted-firmware-a-rk3576
+  ATF:=$(RK3576_ATF)
+  TPL:=$(RK3576_TPL)
+endef
+
+define U-Boot/generic-rk3576
+  $(U-Boot/rk3576/Default)
+  NAME:=Generic RK3576
+  BUILD_DEVICES:= \
+    friendlyarm_nanopi-r76s
+endef
+
+define U-Boot/nanopi-m5-rk3576
+  $(U-Boot/rk3576/Default)
+  NAME:=NanoPi M5
+  BUILD_DEVICES:= \
+    friendlyarm_nanopi-m5
+endef
+
+define U-Boot/photonicat2-rk3576
+  $(U-Boot/rk3576/Default)
+  NAME:=Photonicat2
+  BUILD_DEVICES:= \
+    ariaboard_photonicat2
+endef
+
+define U-Boot/rock-4d-rk3576
+  $(U-Boot/rk3576/Default)
+  NAME:=ROCK 4D
+  BUILD_DEVICES:= \
+    radxa_rock-4d
+endef
+
+
+# RK358x boards
+
+define U-Boot/rk358x/Default
   BUILD_SUBTARGET:=armv8
   DEPENDS:=+PACKAGE_u-boot-$(1):trusted-firmware-a-rk3588
   ATF:=$(RK3588_ATF)
@@ -333,35 +437,51 @@ define U-Boot/rk3588/Default
 endef
 
 define U-Boot/cyber3588-aib-rk3588
-  $(U-Boot/rk3588/Default)
+  $(U-Boot/rk358x/Default)
   NAME:=Cyber3588 AIB
   BUILD_DEVICES:= \
     cyber_cyber3588-aib
 endef
 
+define U-Boot/generic-rk3588
+  $(U-Boot/rk358x/Default)
+  NAME:=Generic RK358x board
+  BUILD_DEVICES:= \
+    radxa_e52c \
+    radxa_rock-5b-plus \
+    radxa_rock-5t
+endef
+
 define U-Boot/nanopc-t6-rk3588
-  $(U-Boot/rk3588/Default)
+  $(U-Boot/rk358x/Default)
   NAME:=NanoPC T6
   BUILD_DEVICES:= \
     friendlyarm_nanopc-t6
 endef
 
 define U-Boot/orangepi-5-plus-rk3588
-  $(U-Boot/rk3588/Default)
+  $(U-Boot/rk358x/Default)
   NAME:=OrangePi 5 Plus
   BUILD_DEVICES:= \
     xunlong_orangepi-5-plus
 endef
 
+define U-Boot/rock-5-itx-rk3588
+  $(U-Boot/rk358x/Default)
+  NAME:=ROCK 5 ITX/ITX+
+  BUILD_DEVICES:= \
+    radxa_rock-5-itx
+endef
+
 define U-Boot/rock5b-rk3588
-  $(U-Boot/rk3588/Default)
+  $(U-Boot/rk358x/Default)
   NAME:=ROCK 5B
   BUILD_DEVICES:= \
     radxa_rock-5b
 endef
 
 define U-Boot/sige7-rk3588
-  $(U-Boot/rk3588/Default)
+  $(U-Boot/rk358x/Default)
   NAME:=Sige7
   BUILD_DEVICES:= \
     armsom_sige7
@@ -371,31 +491,38 @@ endef
 # RK3588S boards
 
 define U-Boot/nanopi-r6c-rk3588s
-  $(U-Boot/rk3588/Default)
+  $(U-Boot/rk358x/Default)
   NAME:=NanoPi R6C
   BUILD_DEVICES:= \
     friendlyarm_nanopi-r6c
 endef
 
 define U-Boot/nanopi-r6s-rk3588s
-  $(U-Boot/rk3588/Default)
+  $(U-Boot/rk358x/Default)
   NAME:=NanoPi R6S
   BUILD_DEVICES:= \
     friendlyarm_nanopi-r6s
 endef
 
 define U-Boot/orangepi-5-rk3588s
-  $(U-Boot/rk3588/Default)
+  $(U-Boot/rk358x/Default)
   NAME:=OrangePi 5
   BUILD_DEVICES:= \
     xunlong_orangepi-5
 endef
 
 define U-Boot/rock5a-rk3588s
-  $(U-Boot/rk3588/Default)
+  $(U-Boot/rk358x/Default)
   NAME:=ROCK 5A
   BUILD_DEVICES:= \
     radxa_rock-5a
+endef
+
+define U-Boot/rock-5c-rk3588s
+  $(U-Boot/rk358x/Default)
+  NAME:=ROCK 5C/5C Lite
+  BUILD_DEVICES:= \
+    radxa_rock-5c
 endef
 
 UBOOT_TARGETS := \
@@ -411,16 +538,23 @@ UBOOT_TARGETS := \
   nanopi-r2c-rk3328 \
   nanopi-r2c-plus-rk3328 \
   nanopi-r2s-rk3328 \
+  nanopi-r2s-plus-rk3328 \
   orangepi-r1-plus-rk3328 \
   orangepi-r1-plus-lts-rk3328 \
   roc-cc-rk3328 \
-  rock-pi-e-rk3328 \
   rock64-rk3328 \
+  rock-pi-e-rk3328 \
+  mangopi-m28c-rk3528 \
+  mangopi-m28k-rk3528 \
+  radxa-e20c-rk3528 \
+  rock-2-rk3528 \
   nanopi-r3s-rk3566 \
   radxa-cm3-io-rk3566 \
   radxa-zero-3-rk3566 \
   rock-3c-rk3566 \
+  9tripod-x3568-v4-rk3568 \
   bpi-r2-pro-rk3568 \
+  easepi-r1-rk3568 \
   fastrhino-r66s-rk3568 \
   fastrhino-r68s-rk3568 \
   lyt-t68m-rk3568 \
@@ -429,20 +563,28 @@ UBOOT_TARGETS := \
   nanopi-r5c-rk3568 \
   nanopi-r5s-rk3568 \
   photonicat-rk3568 \
+  xiguapi-v3-rk3568 \
   radxa-e25-rk3568 \
   roc-pc-rk3568 \
   rock-3a-rk3568 \
   rock-3b-rk3568 \
   sige3-rk3568 \
+  generic-rk3576 \
+  nanopi-m5-rk3576 \
+  photonicat2-rk3576 \
+  rock-4d-rk3576 \
   cyber3588-aib-rk3588 \
   nanopc-t6-rk3588 \
+  generic-rk3588 \
   orangepi-5-plus-rk3588 \
+  rock-5-itx-rk3588 \
   rock5b-rk3588 \
   sige7-rk3588 \
   nanopi-r6c-rk3588s \
   nanopi-r6s-rk3588s \
   orangepi-5-rk3588s \
-  rock5a-rk3588s
+  rock5a-rk3588s \
+  rock-5c-rk3588s
 
 UBOOT_CONFIGURE_VARS += USE_PRIVATE_LIBGCC=yes
 
@@ -470,7 +612,7 @@ define Build/InstallDev
 ifneq ($(TPL),)
 	$(CP) $(PKG_BUILD_DIR)/u-boot-rockchip.bin $(STAGING_DIR_IMAGE)/$(BUILD_VARIANT)-u-boot-rockchip.bin
 else
-	$(STAGING_DIR_IMAGE)/loaderimage --pack --uboot $(PKG_BUILD_DIR)/u-boot-dtb.bin $(PKG_BUILD_DIR)/uboot.img 0x200000
+	$(STAGING_DIR_IMAGE)/loaderimage --pack --uboot $(PKG_BUILD_DIR)/u-boot-dtb.bin $(PKG_BUILD_DIR)/uboot.img 0x800000
 	$(CP) $(PKG_BUILD_DIR)/uboot.img $(STAGING_DIR_IMAGE)/$(BUILD_VARIANT)-uboot.img
 endif
 endef

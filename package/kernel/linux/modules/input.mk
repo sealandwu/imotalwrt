@@ -53,6 +53,22 @@ endef
 
 $(eval $(call KernelPackage,hid-alps))
 
+define KernelPackage/input-adc-keys
+  SUBMENU:=$(INPUT_MODULES_MENU)
+  TITLE:=ADC Ladder Buttons support
+  DEPENDS:=+kmod-input-core +kmod-iio-core
+  KCONFIG:= \
+	CONFIG_KEYBOARD_ADC \
+	CONFIG_INPUT_KEYBOARD=y
+  FILES:=$(LINUX_DIR)/drivers/input/keyboard/adc-keys.ko
+  AUTOLOAD:=$(call AutoProbe,adc-keys,1)
+endef
+
+define KernelPackage/input-adc-keys/description
+ Buttons/keys input driver for resistor ladder connected on ADC
+endef
+
+$(eval $(call KernelPackage,input-adc-keys))
 
 define KernelPackage/input-core
   SUBMENU:=$(INPUT_MODULES_MENU)
@@ -143,6 +159,23 @@ endef
 $(eval $(call KernelPackage,input-gpio-encoder))
 
 
+define KernelPackage/input-matrix-keypad
+  SUBMENU:=$(INPUT_MODULES_MENU)
+  TITLE:=GPIO matrix keypad support
+  DEPENDS:= @GPIO_SUPPORT +kmod-input-core +kmod-input-matrixkmap
+  KCONFIG:= \
+	CONFIG_KEYBOARD_MATRIX \
+	CONFIG_INPUT_KEYBOARD=y
+  FILES:=$(LINUX_DIR)/drivers/input/keyboard/matrix_keypad.ko
+  AUTOLOAD:=$(call AutoProbe,matrix_keypad,1)
+endef
+
+define KernelPackage/input-matrix-keypad/description
+ Enable support for GPIO driven matrix keypad.
+endef
+
+$(eval $(call KernelPackage,input-matrix-keypad))
+
 define KernelPackage/input-joydev
   SUBMENU:=$(INPUT_MODULES_MENU)
   TITLE:=Joystick device support
@@ -173,6 +206,25 @@ define KernelPackage/input-matrixkmap/description
 endef
 
 $(eval $(call KernelPackage,input-matrixkmap))
+
+
+define KernelPackage/input-pwm-beeper
+  SUBMENU:=$(INPUT_MODULES_MENU)
+  TITLE:=PWM beeper support
+  DEPENDS:=@PWM_SUPPORT +kmod-input-core
+  KCONFIG:= \
+	CONFIG_INPUT_MISC=y \
+	CONFIG_INPUT_PWM_BEEPER
+  FILES:= \
+	$(LINUX_DIR)/drivers/input/misc/pwm-beeper.ko
+  AUTOLOAD:=$(call AutoLoad,50,pwm-beeper)
+endef
+
+define KernelPackage/input-pwm-beeper/description
+  Support for PWM based beeper devices
+endef
+
+$(eval $(call KernelPackage,input-pwm-beeper))
 
 
 define KernelPackage/input-touchscreen-ads7846

@@ -91,12 +91,12 @@ metadata_json = \
 define Build/append-metadata
 	$(if $(SUPPORTED_DEVICES),-echo $(call metadata_json) | fwtool -I - $@)
 	sha256sum "$@" | cut -d" " -f1 > "$@.sha256sum"
-	[ ! -s "$(BUILD_KEY)" -o ! -s "$(BUILD_KEY).ucert" -o ! -s "$@" ] || { \
+	$(if $(CONFIG_SIGN_FIRMWARE),[ ! -s "$(BUILD_KEY)" -o ! -s "$(BUILD_KEY).ucert" -o ! -s "$@" ] || { \
 		cp "$(BUILD_KEY).ucert" "$@.ucert" ;\
 		usign -S -m "$@" -s "$(BUILD_KEY)" -x "$@.sig" ;\
 		ucert -A -c "$@.ucert" -x "$@.sig" ;\
 		fwtool -S "$@.ucert" "$@" ;\
-	}
+	})
 endef
 
 metadata_gl_json = \
@@ -110,7 +110,7 @@ metadata_gl_json = \
 		$(if $(filter 1.0,$(compat_version)),"supported_devices":[$(call metadata_devices,$(SUPPORTED_DEVICES))]$(comma)) \
 		"version": { \
 			"release": "$(call json_quote,$(VERSION_NUMBER))", \
-			"date": "$(shell TZ='Asia/Chongqing' date '+%Y%m%d%H%M%S')", \
+			"date": "$(shell TZ='Asia/Chongqing' date $(if $(SOURCE_DATE_EPOCH),-d@$(SOURCE_DATE_EPOCH)) '+%Y%m%d%H%M%S')", \
 			"dist": "$(call json_quote,$(VERSION_DIST))", \
 			"version": "$(call json_quote,$(VERSION_NUMBER))", \
 			"revision": "$(call json_quote,$(REVISION))", \
@@ -122,12 +122,12 @@ metadata_gl_json = \
 define Build/append-gl-metadata
 	$(if $(SUPPORTED_DEVICES),-echo $(call metadata_gl_json,$(SUPPORTED_DEVICES)) | fwtool -I - $@)
 	sha256sum "$@" | cut -d" " -f1 > "$@.sha256sum"
-	[ ! -s "$(BUILD_KEY)" -o ! -s "$(BUILD_KEY).ucert" -o ! -s "$@" ] || { \
+	$(if $(CONFIG_SIGN_FIRMWARE),[ ! -s "$(BUILD_KEY)" -o ! -s "$(BUILD_KEY).ucert" -o ! -s "$@" ] || { \
 		cp "$(BUILD_KEY).ucert" "$@.ucert" ;\
 		usign -S -m "$@" -s "$(BUILD_KEY)" -x "$@.sig" ;\
 		ucert -A -c "$@.ucert" -x "$@.sig" ;\
 		fwtool -S "$@.ucert" "$@" ;\
-	}
+	})
 endef
 
 define Build/append-teltonika-metadata
@@ -324,7 +324,7 @@ define Build/copy-file
 endef
 
 # Create a header for a D-Link AI series recovery image and add it at the beginning of the image
-# Currently supported: AQUILA M30, EAGLE M32 and R32
+# Currently supported: AQUILA E30 and M30, EAGLE M32 and R32
 # Arguments:
 # 1: Start string of the header
 # 2: Firmware version
@@ -430,8 +430,11 @@ define Build/initrd_compression
 	$(if $(CONFIG_TARGET_INITRAMFS_COMPRESSION_ZSTD),.zstd)
 endef
 
-define Build/fit
-	$(call locked,$(TOPDIR)/scripts/mkits.sh \
+define Build/fit-its
+	$(if $(findstring with-rootfs,$(word 3,$(1))), \
+		$(call locked,dd if=$(IMAGE_ROOTFS) of=$(IMAGE_ROOTFS).pagesync bs=4096 conv=sync, \
+		  gen-cpio$(if $(TARGET_PER_DEVICE_ROOTFS),.$(ROOTFS_ID/$(DEVICE_NAME)))))
+	$(TOPDIR)/scripts/mkits.sh \
 		-D $(DEVICE_NAME) -o $@.its -k $@ \
 		-C $(word 1,$(1)) \
 		$(if $(word 2,$(1)),\
@@ -448,10 +451,19 @@ define Build/fit
 		$(if $(DEVICE_DTS_LOADADDR),-s $(DEVICE_DTS_LOADADDR)) \
 		$(if $(DEVICE_DTS_OVERLAY),$(foreach dtso,$(DEVICE_DTS_OVERLAY), -O $(dtso):$(KERNEL_BUILD_DIR)/image-$(dtso).dtbo)) \
 		-c $(if $(DEVICE_DTS_CONFIG),$(DEVICE_DTS_CONFIG),"config-1") \
-		-A $(LINUX_KARCH) -v $(LINUX_VERSION), gen-cpio$(if $(TARGET_PER_DEVICE_ROOTFS),.$(ROOTFS_ID/$(DEVICE_NAME))))
+		-A $(LINUX_KARCH) -v $(LINUX_VERSION)
+endef
+
+define Build/fit-image
 	$(call locked,PATH=$(LINUX_DIR)/scripts/dtc:$(PATH) mkimage $(if $(findstring external,$(word 3,$(1))),\
-		-E -B 0x1000 $(if $(findstring static,$(word 3,$(1))),-p 0x1000)) -f $@.its $@.new)
+		-E -B 0x1000 $(if $(findstring static,$(word 3,$(1))),-p 0x1000)) -f $@.its $@.new, \
+	  gen-cpio$(if $(TARGET_PER_DEVICE_ROOTFS),.$(ROOTFS_ID/$(DEVICE_NAME))))
 	@mv $@.new $@
+endef
+
+define Build/fit
+	$(call Build/fit-its,$(1))
+	$(call Build/fit-image,$(1))
 endef
 
 define Build/libdeflate-gzip
@@ -519,7 +531,7 @@ define Build/yaffs-filesystem
 		filesystem_size="filesystem_blocks * 64 * 1024" \
 		filesystem_size_with_reserve="(filesystem_blocks + 2) * 64 * 1024"; \
 		head -c $$filesystem_size_with_reserve /dev/zero | tr "\000" "\377" > $@.img \
-		&& yafut -d $@.img -w -i $@ -o kernel -C 1040 -B 64k -E -P -S $(1) \
+		&& yafut -d $@.img -w -i $@ -o $(if $(findstring v7,$@),bootimage,kernel) -C 1040 -B 64k -E -P -S $(1) \
 		&& truncate -s $$filesystem_size $@.img \
 		&& mv $@.img $@
 endef
@@ -555,6 +567,11 @@ define Build/gl-qsdk-factory
 		$(GL_ITS) \
 		$(GL_IMGK).tmp \
 		$(KDIR_TMP)/$(notdir $(BOOT_SCRIPT))
+endef
+
+define Build/kernel-pack-npk
+	$(STAGING_DIR_HOST)/bin/npk_pack_kernel $@ $@.npk
+	mv $@.npk $@
 endef
 
 define Build/linksys-image
@@ -624,6 +641,19 @@ endef
 
 define Build/openmesh-image
 	$(TOPDIR)/scripts/om-fwupgradecfg-gen.sh \
+		"$(call param_get_default,ce_type,$(1),$(DEVICE_NAME))" \
+		"$@-fwupgrade.cfg" \
+		"$(call param_get_default,kernel,$(1),$(IMAGE_KERNEL))" \
+		"$(call param_get_default,rootfs,$(1),$@)"
+	$(TOPDIR)/scripts/combined-ext-image.sh \
+		"$(call param_get_default,ce_type,$(1),$(DEVICE_NAME))" "$@" \
+		"$@-fwupgrade.cfg" "fwupgrade.cfg" \
+		"$(call param_get_default,kernel,$(1),$(IMAGE_KERNEL))" "kernel" \
+		"$(call param_get_default,rootfs,$(1),$@)" "rootfs"
+endef
+
+define Build/dualboot-datachk-nand-image
+	$(TOPDIR)/scripts/nand-fwupgradecfg-gen.sh \
 		"$(call param_get_default,ce_type,$(1),$(DEVICE_NAME))" \
 		"$@-fwupgrade.cfg" \
 		"$(call param_get_default,kernel,$(1),$(IMAGE_KERNEL))" \

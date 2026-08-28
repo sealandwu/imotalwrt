@@ -8,13 +8,13 @@
 include $(TOPDIR)/rules.mk
 
 PKG_NAME:=mbedtls
-PKG_VERSION:=3.6.4
+PKG_VERSION:=3.6.7
 PKG_RELEASE:=1
 PKG_BUILD_FLAGS:=no-mips16 gc-sections no-lto
 
 PKG_SOURCE:=$(PKG_NAME)-$(PKG_VERSION).tar.bz2
 PKG_SOURCE_URL=https://github.com/Mbed-TLS/$(PKG_NAME)/releases/download/$(PKG_NAME)-$(PKG_VERSION)
-PKG_HASH:=ec35b18a6c593cf98c3e30db8b98ff93e8940a8c4e690e66b41dfc011d678110
+PKG_HASH:=a7e8bcbec0e6f761b4af24f25677626b35f762f68eef79c08677a363212d11f6
 
 PKG_LICENSE:=GPL-2.0-or-later
 PKG_LICENSE_FILES:=LICENSE
@@ -134,7 +134,9 @@ This package contains mbedtls helper programs for private key and
 CSR generation (gen_key, cert_req)
 endef
 
-TARGET_CFLAGS := $(filter-out -O%,$(TARGET_CFLAGS)) -Wno-unterminated-string-initialization
+TARGET_CFLAGS := $(filter-out -O%,$(TARGET_CFLAGS)) \
+	-Wno-unterminated-string-initialization \
+	$(if $(findstring cortex-a53,$(CONFIG_CPU_TYPE)),-march=armv8-a)
 
 CMAKE_OPTIONS += \
 	-DCMAKE_POSITION_INDEPENDENT_CODE=ON \

@@ -145,9 +145,6 @@
 	status = "okay";
 
 	flash@0 {
-		#address-cells = <1>;
-		#size-cells = <1>;
-
 		compatible = "jedec,spi-nor";
 		reg = <0>;
 
@@ -172,7 +169,7 @@
 				read-only;
 			};
 
-			factory: partition@50000 {
+			partition@50000 {
 				label = "Factory";
 				reg = <0x50000 0x10000>;
 				read-only;

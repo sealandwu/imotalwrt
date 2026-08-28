@@ -1005,7 +1005,10 @@ static int bcm6368_enetsw_probe(struct platform_device *pdev)
 	priv->tx_ring_size = ENETSW_DEF_TX_DESC;
 	priv->copybreak = ENETSW_DEF_CPY_BREAK;
 
-	of_get_mac_address(node, dev_addr);
+	ret = of_get_mac_address(node, dev_addr);
+	if (ret == -EPROBE_DEFER)
+		return ret;
+
 	if (is_valid_ether_addr(dev_addr)) {
 		dev_addr_set(ndev, dev_addr);
 		dev_info(dev, "mtd mac %pM\n", dev_addr);
@@ -1136,7 +1139,7 @@ static struct platform_driver bcm6368_enetsw_driver = {
 		.of_match_table = bcm6368_enetsw_of_match,
 	},
 	.probe	= bcm6368_enetsw_probe,
-	.remove_new	= bcm6368_enetsw_remove,
+	.remove	= bcm6368_enetsw_remove,
 };
 module_platform_driver(bcm6368_enetsw_driver);
 

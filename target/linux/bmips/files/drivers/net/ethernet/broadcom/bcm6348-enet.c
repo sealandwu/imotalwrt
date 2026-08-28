@@ -1565,7 +1565,10 @@ static int bcm6348_emac_probe(struct platform_device *pdev)
 	emac->old_duplex = -1;
 	emac->old_pause = -1;
 
-	of_get_mac_address(node, dev_addr);
+	ret = of_get_mac_address(node, dev_addr);
+	if (ret == -EPROBE_DEFER)
+		return ret;
+
 	if (is_valid_ether_addr(dev_addr)) {
 		dev_addr_set(ndev, dev_addr);
 		dev_info(dev, "mtd mac %pM\n", dev_addr);
@@ -1704,7 +1707,7 @@ static struct platform_driver bcm6348_emac_driver = {
 		.of_match_table = bcm6348_emac_of_match,
 	},
 	.probe	= bcm6348_emac_probe,
-	.remove_new	= bcm6348_emac_remove,
+	.remove	= bcm6348_emac_remove,
 };
 
 int bcm6348_iudma_drivers_register(struct platform_device *pdev)

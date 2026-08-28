@@ -24,6 +24,7 @@
 #include "taxonomy.h"
 #include "airtime_policy.h"
 #include "hw_features.h"
+#include "base64.h"
 
 static struct ubus_context *ctx;
 static struct blob_buf b;
@@ -476,6 +477,7 @@ hostapd_bss_del_client(struct ubus_context *ctx, struct ubus_object *obj,
 			struct blob_attr *msg)
 {
 	struct blob_attr *tb[__DEL_CLIENT_MAX];
+	const u8 bcast[ETH_ALEN] = { 0xff, 0xff, 0xff, 0xff, 0xff, 0xff };
 	struct hostapd_data *hapd = container_of(obj, struct hostapd_data, ubus.obj);
 	struct sta_info *sta;
 	bool deauth = false;
@@ -496,15 +498,19 @@ hostapd_bss_del_client(struct ubus_context *ctx, struct ubus_object *obj,
 	if (tb[DEL_CLIENT_DEAUTH])
 		deauth = blobmsg_get_bool(tb[DEL_CLIENT_DEAUTH]);
 
+	if (deauth)
+		hostapd_drv_sta_deauth(hapd, addr, reason);
+	else
+		hostapd_drv_sta_disassoc(hapd, addr, reason);
+
 	sta = ap_get_sta(hapd, addr);
 	if (sta) {
-		if (deauth) {
-			hostapd_drv_sta_deauth(hapd, addr, reason);
+		if (deauth)
 			ap_sta_deauthenticate(hapd, sta, reason);
-		} else {
-			hostapd_drv_sta_disassoc(hapd, addr, reason);
+		else
 			ap_sta_disassociate(hapd, sta, reason);
-		}
+	} else if (memcmp(addr, bcast, ETH_ALEN) == 0) {
+		hostapd_free_stas(hapd);
 	}
 
 	if (tb[DEL_CLIENT_BAN_TIME])
@@ -1117,9 +1123,9 @@ hostapd_rrm_nr_set(struct ubus_context *ctx, struct ubus_object *obj,
 		if (strlen(s) == 0) {
 			/* Copy BSSID from neighbor report */
 			if (hwaddr_compact_aton(nr_s, bssid))
-				goto invalid;
+				goto invalid_free;
 		} else if (hwaddr_aton(s, bssid)) {
-			goto invalid;
+			goto invalid_free;
 		}
 
 		/* SSID */
@@ -1130,7 +1136,7 @@ hostapd_rrm_nr_set(struct ubus_context *ctx, struct ubus_object *obj,
 		} else {
 			ssid.ssid_len = strlen(s);
 			if (ssid.ssid_len > sizeof(ssid.ssid))
-				goto invalid;
+				goto invalid_free;
 
 			memcpy(&ssid, s, ssid.ssid_len);
 		}
@@ -1139,6 +1145,8 @@ hostapd_rrm_nr_set(struct ubus_context *ctx, struct ubus_object *obj,
 		wpabuf_free(data);
 		continue;
 
+invalid_free:
+		wpabuf_free(data);
 invalid:
 		return UBUS_STATUS_INVALID_ARGUMENT;
 	}
@@ -1154,17 +1162,21 @@ enum {
 	BEACON_REQ_DURATION,
 	BEACON_REQ_BSSID,
 	BEACON_REQ_SSID,
+	BEACON_REQ_REPORTING_DETAIL,
+	BEACON_REQ_CHANNEL_REPORTS,
 	__BEACON_REQ_MAX,
 };
 
 static const struct blobmsg_policy beacon_req_policy[__BEACON_REQ_MAX] = {
 	[BEACON_REQ_ADDR] = { "addr", BLOBMSG_TYPE_STRING },
-	[BEACON_REQ_OP_CLASS] { "op_class", BLOBMSG_TYPE_INT32 },
-	[BEACON_REQ_CHANNEL] { "channel", BLOBMSG_TYPE_INT32 },
-	[BEACON_REQ_DURATION] { "duration", BLOBMSG_TYPE_INT32 },
-	[BEACON_REQ_MODE] { "mode", BLOBMSG_TYPE_INT32 },
-	[BEACON_REQ_BSSID] { "bssid", BLOBMSG_TYPE_STRING },
-	[BEACON_REQ_SSID] { "ssid", BLOBMSG_TYPE_STRING },
+	[BEACON_REQ_OP_CLASS] = { "op_class", BLOBMSG_TYPE_INT32 },
+	[BEACON_REQ_CHANNEL] = { "channel", BLOBMSG_TYPE_INT32 },
+	[BEACON_REQ_DURATION] = { "duration", BLOBMSG_TYPE_INT32 },
+	[BEACON_REQ_MODE] = { "mode", BLOBMSG_TYPE_INT32 },
+	[BEACON_REQ_BSSID] = { "bssid", BLOBMSG_TYPE_STRING },
+	[BEACON_REQ_SSID] = { "ssid", BLOBMSG_TYPE_STRING },
+	[BEACON_REQ_REPORTING_DETAIL] = { "reporting_detail", BLOBMSG_TYPE_INT32 },
+	[BEACON_REQ_CHANNEL_REPORTS] = { "channel_reports", BLOBMSG_TYPE_ARRAY },
 };
 
 static int
@@ -1180,6 +1192,7 @@ hostapd_rrm_beacon_req(struct ubus_context *ctx, struct ubus_object *obj,
 	u8 addr[ETH_ALEN];
 	int mode, rem, ret;
 	int buf_len = 13;
+	int reporting_detail = 255;
 
 	blobmsg_parse(beacon_req_policy, __BEACON_REQ_MAX, tb, blob_data(msg), blob_len(msg));
 
@@ -1197,6 +1210,12 @@ hostapd_rrm_beacon_req(struct ubus_context *ctx, struct ubus_object *obj,
 	if (tb[BEACON_REQ_BSSID] &&
 	    hwaddr_aton(blobmsg_data(tb[BEACON_REQ_BSSID]), bssid))
 		return UBUS_STATUS_INVALID_ARGUMENT;
+
+	if (tb[BEACON_REQ_REPORTING_DETAIL])
+		reporting_detail = blobmsg_get_u32(tb[BEACON_REQ_REPORTING_DETAIL]);
+
+	if (reporting_detail >= 0 && reporting_detail < 3)
+		buf_len += 3;
 
 	req = wpabuf_alloc(buf_len);
 	if (!req)
@@ -1226,7 +1245,16 @@ hostapd_rrm_beacon_req(struct ubus_context *ctx, struct ubus_object *obj,
 		wpabuf_put_data(req, blobmsg_data(cur), blobmsg_data_len(cur) - 1);
 	}
 
+	/* as per 9-106 */
+	if (reporting_detail >= 0 && reporting_detail < 3) {
+		/* as per 9-104 */
+		wpabuf_put_u8(req, 2);
+		wpabuf_put_u8(req, 1);
+		wpabuf_put_u8(req, reporting_detail);
+	}
+
 	ret = hostapd_send_beacon_req(hapd, addr, 0, req);
+	wpabuf_free(req);
 	if (ret < 0)
 		return -ret;
 
@@ -1586,6 +1614,41 @@ hostapd_add_b64_data(const char *name, const struct wpabuf *buf)
 	return true;
 }
 
+static bool hostapd_sta_has_ies(struct sta_info *sta)
+{
+	return sta && (sta->probe_ie_taxonomy || sta->assoc_ie_taxonomy ||
+		       sta->assoc_frame_taxonomy);
+}
+
+/* Only the link a non-AP MLD associated over runs the association through, so
+ * the frames are recorded on that link's station entry while every other link
+ * holds one without them. Walk the affiliated links to find the entry that has
+ * them. */
+static struct sta_info *hostapd_get_sta_ies_sta(struct hostapd_data *hapd,
+						const u8 *addr)
+{
+	struct sta_info *sta = ap_get_sta(hapd, addr);
+#ifdef CONFIG_IEEE80211BE
+	struct hostapd_data *link_bss;
+
+	if (hostapd_sta_has_ies(sta) || !hapd->conf->mld_ap || !hapd->mld)
+		return sta;
+
+	for_each_mld_link(link_bss, hapd) {
+		struct sta_info *link_sta;
+
+		if (link_bss == hapd)
+			continue;
+
+		link_sta = ap_get_sta(link_bss, addr);
+		if (hostapd_sta_has_ies(link_sta))
+			return link_sta;
+	}
+#endif /* CONFIG_IEEE80211BE */
+
+	return sta;
+}
+
 static int
 hostapd_bss_get_sta_ies(struct ubus_context *ctx, struct ubus_object *obj,
 			struct ubus_request_data *req, const char *method,
@@ -1601,13 +1664,14 @@ hostapd_bss_get_sta_ies(struct ubus_context *ctx, struct ubus_object *obj,
 	if (!tb || hwaddr_aton(blobmsg_data(tb), addr))
 		return UBUS_STATUS_INVALID_ARGUMENT;
 
-	sta = ap_get_sta(hapd, addr);
-	if (!sta || (!sta->probe_ie_taxonomy && !sta->assoc_ie_taxonomy))
+	sta = hostapd_get_sta_ies_sta(hapd, addr);
+	if (!hostapd_sta_has_ies(sta))
 		return UBUS_STATUS_NOT_FOUND;
 
 	blob_buf_init(&b, 0);
 	hostapd_add_b64_data("probe_ie", sta->probe_ie_taxonomy);
 	hostapd_add_b64_data("assoc_ie", sta->assoc_ie_taxonomy);
+	hostapd_add_b64_data("assoc_frame", sta->assoc_frame_taxonomy);
 	ubus_send_reply(ctx, req, b.head);
 
 	return 0;
@@ -1844,6 +1908,7 @@ ubus_event_cb(struct ubus_notify_request *req, int idx, int ret)
 int hostapd_ubus_handle_event(struct hostapd_data *hapd, struct hostapd_ubus_request *req)
 {
 	struct ubus_banned_client *ban;
+	const u8 bcast[ETH_ALEN] = { 0xff, 0xff, 0xff, 0xff, 0xff, 0xff };
 	const char *types[HOSTAPD_UBUS_TYPE_MAX] = {
 		[HOSTAPD_UBUS_PROBE_REQ] = "probe",
 		[HOSTAPD_UBUS_AUTH_REQ] = "auth",
@@ -1859,6 +1924,10 @@ int hostapd_ubus_handle_event(struct hostapd_data *hapd, struct hostapd_ubus_req
 		addr = req->addr;
 
 	ban = avl_find_element(&hapd->ubus.banned, addr, ban, avl);
+	if (ban)
+		return WLAN_STATUS_AP_UNABLE_TO_HANDLE_NEW_STA;
+
+	ban = avl_find_element(&hapd->ubus.banned, bcast, ban, avl);
 	if (ban)
 		return WLAN_STATUS_AP_UNABLE_TO_HANDLE_NEW_STA;
 
@@ -1935,9 +2004,33 @@ int hostapd_ubus_handle_event(struct hostapd_data *hapd, struct hostapd_ubus_req
 	return WLAN_STATUS_SUCCESS;
 }
 
+/* The BSSes of an AP MLD share one interface name. Only the first BSS owns an
+ * object with that name, and that object holds the subscribers. An event from
+ * a different link must go out through that object. */
+static struct ubus_object *hostapd_ubus_notify_obj(struct hostapd_data *hapd)
+{
+	struct ubus_object *obj = &hapd->ubus.obj;
+#ifdef CONFIG_IEEE80211BE
+	struct hostapd_data *link_bss;
+
+	if (obj->has_subscribers || !hapd->conf->mld_ap || !hapd->mld)
+		return obj;
+
+	for_each_mld_link(link_bss, hapd) {
+		if (link_bss == hapd)
+			continue;
+		if (link_bss->ubus.obj.has_subscribers)
+			return &link_bss->ubus.obj;
+	}
+#endif /* CONFIG_IEEE80211BE */
+	return obj;
+}
+
 void hostapd_ubus_notify(struct hostapd_data *hapd, const char *type, const u8 *addr)
 {
-	if (!hapd->ubus.obj.has_subscribers)
+	struct ubus_object *obj = hostapd_ubus_notify_obj(hapd);
+
+	if (!obj->has_subscribers)
 		return;
 
 	if (!addr)
@@ -1947,7 +2040,22 @@ void hostapd_ubus_notify(struct hostapd_data *hapd, const char *type, const u8 *
 	blobmsg_add_macaddr(&b, "address", addr);
 	blobmsg_add_string(&b, "ifname", hapd->conf->iface);
 
-	ubus_notify(ctx, &hapd->ubus.obj, type, b.head, -1);
+	ubus_notify(ctx, obj, type, b.head, -1);
+}
+
+/* A non-AP MLD is known by its MLD MAC address, which is what get_clients and
+ * the station table report, while the entry held by an affiliated link carries
+ * the address of that link alone. Name the station the same way everywhere. */
+static const u8 *hostapd_ubus_sta_addr(struct hostapd_data *hapd,
+				       struct sta_info *sta)
+{
+#ifdef CONFIG_IEEE80211BE
+	if (ap_sta_is_mld(hapd, sta) &&
+	    !is_zero_ether_addr(sta->mld_info.common_info.mld_addr))
+		return sta->mld_info.common_info.mld_addr;
+#endif /* CONFIG_IEEE80211BE */
+
+	return sta->addr;
 }
 
 void hostapd_ubus_notify_authorized(struct hostapd_data *hapd, struct sta_info *sta,
@@ -1957,7 +2065,7 @@ void hostapd_ubus_notify_authorized(struct hostapd_data *hapd, struct sta_info *
 		return;
 
 	blob_buf_init(&b, 0);
-	blobmsg_add_macaddr(&b, "address", sta->addr);
+	blobmsg_add_macaddr(&b, "address", hostapd_ubus_sta_addr(hapd, sta));
 	if (sta->vlan_id)
 		blobmsg_add_u32(&b, "vlan", sta->vlan_id);
 	blobmsg_add_string(&b, "ifname", hapd->conf->iface);
@@ -1978,6 +2086,8 @@ void hostapd_ubus_notify_beacon_report(
 	struct hostapd_data *hapd, const u8 *addr, u8 token, u8 rep_mode,
 	struct rrm_measurement_beacon_report *rep, size_t len)
 {
+	char *encoded;
+
 	if (!hapd->ubus.obj.has_subscribers)
 		return;
 
@@ -1986,6 +2096,7 @@ void hostapd_ubus_notify_beacon_report(
 
 	blob_buf_init(&b, 0);
 	blobmsg_add_macaddr(&b, "address", addr);
+	blobmsg_add_u32(&b, "token", token);
 	blobmsg_add_u16(&b, "op-class", rep->op_class);
 	blobmsg_add_u16(&b, "channel", rep->channel);
 	blobmsg_add_u64(&b, "start-time", rep->start_time);
@@ -1995,9 +2106,13 @@ void hostapd_ubus_notify_beacon_report(
 	blobmsg_add_u16(&b, "rsni", rep->rsni);
 	blobmsg_add_macaddr(&b, "bssid", rep->bssid);
 	blobmsg_add_u16(&b, "antenna-id", rep->antenna_id);
-	blobmsg_add_u16(&b, "parent-tsf", rep->parent_tsf);
+	blobmsg_add_u32(&b, "parent-tsf", rep->parent_tsf);
 	blobmsg_add_u16(&b, "rep-mode", rep_mode);
-
+	encoded = base64_encode(rep, len, NULL);
+	if (encoded) {
+		blobmsg_add_string(&b, "report", encoded);
+		os_free(encoded);
+	}
 	ubus_notify(ctx, &hapd->ubus.obj, "beacon-report", b.head, -1);
 }
 
@@ -2056,9 +2171,9 @@ void hostapd_ubus_notify_bss_transition_response(
 
 	blob_buf_init(&b, 0);
 	blobmsg_add_macaddr(&b, "address", addr);
-	blobmsg_add_u8(&b, "dialog-token", dialog_token);
-	blobmsg_add_u8(&b, "status-code", status_code);
-	blobmsg_add_u8(&b, "bss-termination-delay", bss_termination_delay);
+	blobmsg_add_u32(&b, "dialog-token", dialog_token);
+	blobmsg_add_u32(&b, "status-code", status_code);
+	blobmsg_add_u32(&b, "bss-termination-delay", bss_termination_delay);
 	if (target_bssid)
 		blobmsg_add_macaddr(&b, "target-bssid", target_bssid);
 
@@ -2085,8 +2200,8 @@ int hostapd_ubus_notify_bss_transition_query(
 
 	blob_buf_init(&b, 0);
 	blobmsg_add_macaddr(&b, "address", addr);
-	blobmsg_add_u8(&b, "dialog-token", dialog_token);
-	blobmsg_add_u8(&b, "reason", reason);
+	blobmsg_add_u32(&b, "dialog-token", dialog_token);
+	blobmsg_add_u32(&b, "reason", reason);
 	hostapd_ubus_notify_bss_transition_add_candidate_list(candidate_list, candidate_list_len);
 
 	if (!hapd->ubus.notify_response) {

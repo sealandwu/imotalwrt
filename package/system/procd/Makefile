@@ -12,9 +12,9 @@ PKG_RELEASE:=1
 
 PKG_SOURCE_PROTO:=git
 PKG_SOURCE_URL=$(PROJECT_GIT)/project/procd.git
-PKG_MIRROR_HASH:=cba150137cdab99ccb711d9f54eac475f94c02f9f68a1084e4a59cda1a4dd714
-PKG_SOURCE_DATE:=2025-08-12
-PKG_SOURCE_VERSION:=dafdf98b03bfa6014cd94ffc86de130b9deb17e4
+PKG_MIRROR_HASH:=bd9e510b303b58f1edb1bfc4629e523f9a96c80a5b66cf5c972f9245bfec5596
+PKG_SOURCE_DATE:=2026-06-17
+PKG_SOURCE_VERSION:=60fdbf00e924fff0a510c4ec31c520d35e69bfe1
 CMAKE_INSTALL:=1
 
 PKG_LICENSE:=GPL-2.0
@@ -50,6 +50,7 @@ define Package/procd
   $(call Package/procd/Default)
   VARIANT:=default
   CONFLICTS:=procd-selinux
+  DEFAULT_VARIANT:=1
 endef
 
 define Package/procd-selinux
