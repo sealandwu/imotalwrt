@@ -1101,6 +1101,36 @@ define Device/cmcc_rax3000me
 endef
 TARGET_DEVICES += cmcc_rax3000me
 
+define Device/tplink_wma301-common
+  DEVICE_VENDOR := TP-Link
+  DEVICE_MODEL := WMA301
+  DEVICE_DTS_DIR := ../dts
+  DEVICE_PACKAGES := kmod-mt7915e kmod-mt7981-firmware mt7981-wo-firmware
+  UBINIZE_OPTS := -E 5
+  BLOCKSIZE := 128k
+  PAGESIZE := 2048
+  KERNEL_IN_UBI := 1
+  UBOOTENV_IN_UBI := 1
+  IMAGES := sysupgrade.itb
+  KERNEL_INITRAMFS_SUFFIX := -recovery.itb
+  KERNEL := kernel-bin | gzip
+  KERNEL_INITRAMFS := kernel-bin | lzma | \
+	fit lzma $$(KDIR)/image-$$(firstword $$(DEVICE_DTS)).dtb with-initrd | pad-to 64k
+  IMAGE/sysupgrade.itb := append-kernel | \
+	fit gzip $$(KDIR)/image-$$(firstword $$(DEVICE_DTS)).dtb external-static-with-rootfs | append-metadata
+  ARTIFACTS := preloader.bin bl31-uboot.fip
+  ARTIFACT/preloader.bin := mt7981-bl2 wma301-v2-ddr3
+endef
+TARGET_DEVICES += tplink_wma301-common
+
+define Device/tplink_wma301-v2-ubootmod
+  DEVICE_VARIANT := v2
+  DEVICE_DTS := mt7981b-tplink-wma301-v2-ubootmod
+  ARTIFACT/bl31-uboot.fip := mt7981-bl31-uboot tplink_wma301-v2
+  $(call Device/tplink_wma301-common)
+endef
+TARGET_DEVICES += tplink_wma301-v2-ubootmod
+
 define Device/comfast_cf-e393ax
   DEVICE_VENDOR := COMFAST
   DEVICE_MODEL := CF-E393AX
