@@ -834,6 +834,28 @@ define U-Boot/mt7981_snr_snr-cpe-ax2
   DEPENDS:=+trusted-firmware-a-mt7981-spim-nand-ddr3
 endef
 
+define U-Boot/mt7981_tplink_wma301-v2
+  NAME:=TP-Link WMA301 v2
+  BUILD_SUBTARGET:=filogic
+  BUILD_DEVICES:=tplink_wma301-v2-ubootmod
+  UBOOT_CONFIG:=mt7981_tplink_wma301-v2
+  UBOOT_IMAGE:=u-boot.fip
+  BL2_BOOTDEV:=wma301-v2-ddr3
+  BL2_SOC:=mt7981
+  DEPENDS:=+trusted-firmware-a-mt7981-wma301-v2-ddr3
+endef
+
+define U-Boot/mt7981_tplink_wma301-v2-256m
+  NAME:=TP-Link WMA301 v2 (256M)
+  BUILD_SUBTARGET:=filogic
+  BUILD_DEVICES:=tplink_wma301-v2-256m-ubootmod
+  UBOOT_CONFIG:=mt7981_tplink_wma301-v2-256m
+  UBOOT_IMAGE:=u-boot.fip
+  BL2_BOOTDEV:=wma301-v2-ddr3
+  BL2_SOC:=mt7981
+  DEPENDS:=+trusted-firmware-a-mt7981-wma301-v2-ddr3
+endef
+
 define U-Boot/mt7981_teralink_tl3020-256mb
   NAME:=Teralink TL3020 256mb
   BUILD_SUBTARGET:=filogic
@@ -1531,6 +1553,8 @@ UBOOT_TARGETS := \
 	mt7981_qihoo_360t7 \
 	mt7981_qihoo_360t7-ubi \
 	mt7981_snr_snr-cpe-ax2 \
+	mt7981_tplink_wma301-v2 \
+	mt7981_tplink_wma301-v2-256m \
 	mt7981_teralink_tl3020-256mb \
 	mt7981_wavlink_wl-wnt100x3 \
 	mt7981_xiaomi_mi-router-ax3000t \
