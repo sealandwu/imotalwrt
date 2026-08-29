@@ -819,6 +819,17 @@ define U-Boot/mt7981_tplink_wma301-v2
   DEPENDS:=+trusted-firmware-a-mt7981-wma301-v2-ddr3
 endef
 
+define U-Boot/mt7981_tplink_wma301-v2.1
+  NAME:=TP-Link WMA301 v2.1
+  BUILD_SUBTARGET:=filogic
+  BUILD_DEVICES:=tplink_wma301-v2.1-ubootmod
+  UBOOT_CONFIG:=mt7981_tplink_wma301-v2.1
+  UBOOT_IMAGE:=u-boot.fip
+  BL2_BOOTDEV:=wma301-v2.1-ddr3
+  BL2_SOC:=mt7981
+  DEPENDS:=+trusted-firmware-a-mt7981-wma301-v2.1-ddr3
+endef
+
 define U-Boot/mt7981_tplink_wma301-v2-256m
   NAME:=TP-Link WMA301 v2 (256M)
   BUILD_SUBTARGET:=filogic
